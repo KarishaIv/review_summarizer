@@ -13,3 +13,5 @@ STICKERS = ['CAACAgIAAxkBAAENQmNnTh-ql_qQch8evTxlF4PBAhHCDQACfmAAAncreUiDX1b1uUH
             'CAACAgIAAxkBAAENQmdnTiSFbzvUArbh6tO4w992Y8ppwgACVl4AAuGbeEpnUr72Z314QjYE',
             'CAACAgIAAxkBAAENQmlnTiSaaH-pgm3ObRdoeAhPPHvW6QAC8DgAAsxBiElDz-WLw6ES9DYE',
             'CAACAgIAAxkBAAENQmtnTiSsj0qGIdNrZvTLiyb9FeC9fwACpT0AAm7loUlhCyy0Kg5gGjYE']
+
+EATING_MESSAGE = ('здесь будет соо')
