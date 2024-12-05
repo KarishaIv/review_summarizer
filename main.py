@@ -1,3 +1,4 @@
+from aiogram.utils.exceptions import InvalidQueryID
 from dotenv import load_dotenv
 import os
 from aiogram import Bot, Dispatcher, types
@@ -6,7 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeybo
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from messages import WELCOME_MESSAGE, EATING_MESSAGE, STICKERS
+from messages import WELCOME_MESSAGE, STICKERS
 import requests
 from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup
@@ -18,6 +19,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
+
 
 def fetch_reviews(dish):
     url = f"https://www.gastronom.ru/search?search={dish}&pageType=recipepage"
@@ -107,12 +109,13 @@ async def send_message(chat_id: int, text: str, reply_markup=None):
     await bot.send_message(chat_id, text, reply_markup=reply_markup)
 
 async def send_message_with_menu(chat_id: int, text: str):
-    await send_message(chat_id, text, reply_markup=keyboard_reply)
+    keyboard = InlineKeyboardMarkup().add(InlineKeyboardButton(text="я хочу стать женщиной...", callback_data="first_button"))
+    await send_message(chat_id, text, reply_markup=keyboard)
 
 async def send_sticker(chat_id: int, sticker_id: str):
     await bot.send_sticker(chat_id, sticker_id)
 
-keyboard_inline = InlineKeyboardMarkup().add(InlineKeyboardButton(text="я хочу кушать...", callback_data="first_button"))
+keyboard_inline = InlineKeyboardMarkup().add(InlineKeyboardButton(text="я хочу стать женщиной...", callback_data="first_button"))
 button_menu = KeyboardButton("в меню")
 keyboard_reply = ReplyKeyboardMarkup(resize_keyboard=True).add(button_menu)
 keyboard_eating = InlineKeyboardMarkup().add(
@@ -125,16 +128,16 @@ async def button_one_handler(call: types.CallbackQuery):
     await RestaurantStates.waiting_for_restaurant_name.set()
     await call.answer()
 
-next_recipe_keyboard = InlineKeyboardMarkup(row_width=2).add(
-    InlineKeyboardButton("Да", callback_data="show_next_recipe"),
-    InlineKeyboardButton("Нет", callback_data="end_recipe_view"),
-)
-
 @dp.message_handler(state=RestaurantStates.waiting_for_restaurant_name, content_types=types.ContentType.TEXT)
 async def restaurant_name_handler(message: types.Message, state: FSMContext):
+    if message.text == "в меню" or message.text == '/menu':
+        await send_message_with_menu(message.chat.id, WELCOME_MESSAGE)
+        await state.finish()  # Завершаем текущее состояние
+        return
+
     restaurant_name = message.text
 
-    await message.answer("Ищу рецепты и ингредиенты, это может занять немного времени...")
+    await message.answer("Ищу рецепты и ингредиенты, это может занять немного времени...🫦")
     restaurant_links, recipe_titles, recipe_image_urls = fetch_reviews(restaurant_name)
 
     if not restaurant_links:
@@ -145,7 +148,6 @@ async def restaurant_name_handler(message: types.Message, state: FSMContext):
     await state.update_data(restaurant_links=restaurant_links, recipe_titles=recipe_titles, recipe_image_urls=recipe_image_urls)
 
     await show_recipe(message, state, recipe_index=0)
-
 
 async def show_recipe(message: types.Message, state: FSMContext, recipe_index: int):
     data = await state.get_data()
@@ -158,39 +160,104 @@ async def show_recipe(message: types.Message, state: FSMContext, recipe_index: i
         await state.finish()
         return
 
-    title = recipe_titles[recipe_index]
-    image_url = recipe_image_urls[recipe_index]
-    link = restaurant_links[recipe_index]
+    images_to_send = recipe_image_urls[recipe_index:recipe_index + 3]
+    keyboard = InlineKeyboardMarkup(row_width=3)
 
-    if title:
-        await message.answer(f"{title}")
-    if image_url:
-        await bot.send_photo(message.chat.id, image_url)
+    for i, image_url in enumerate(images_to_send):
+        if image_url:
+            # Получаем название рецепта для текущего изображения
+            recipe_title = recipe_titles[recipe_index + i] if recipe_index + i < len(recipe_titles) else "Без названия"
+            button = InlineKeyboardButton(
+                text=f"Рецепт {i + 1}",
+                callback_data=f"select_image_{recipe_index + i}"  # Индекс рецепта уникален
+            )
+            keyboard.add(button)
+            # Отправляем изображение с подписью
+            await bot.send_photo(message.chat.id, image_url, caption=recipe_title)
 
-    # Ищем ингредиенты
-    ingredients = fetch_ingredients_from_first_recipe([link])
+    await message.answer("Выберите рецепт:", reply_markup=keyboard)
+
+
+next_recipe_keyboard = InlineKeyboardMarkup(row_width=2).add(
+    InlineKeyboardButton("Да", callback_data="end_recipe_view"),
+    InlineKeyboardButton("Нет", callback_data="show_next_recipe"),
+)
+
+@dp.callback_query_handler(lambda c: c.data == "recipe_accept", state=RestaurantStates.waiting_for_restaurant_name)
+async def handle_recipe_accept(call: types.CallbackQuery, state: FSMContext):
+    await call.message.answer("Приятного аппетита!")
+    await state.finish()
+    await call.answer()
+
+@dp.callback_query_handler(lambda c: c.data == "recipe_reject", state=RestaurantStates.waiting_for_restaurant_name)
+async def handle_recipe_reject(call: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    current_recipe_index = data.get("current_recipe_index", 0)
+    await show_recipe(call.message, state, recipe_index=current_recipe_index + 1)  # Показать следующий рецепт
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("select_image_"),
+                           state=RestaurantStates.waiting_for_restaurant_name)
+async def select_image_handler(call: types.CallbackQuery, state: FSMContext):
+    parts = call.data.split("_")
+    if len(parts) != 3:
+        await call.answer("Ошибка выбора рецепта.")
+        return
+
+    try:
+        recipe_index = int(parts[2])
+    except ValueError:
+        await call.answer("Некорректный индекс рецепта.")
+        return
+
+    data = await state.get_data()
+    restaurant_links = data.get('restaurant_links', [])
+    recipe_titles = data.get('recipe_titles', [])
+
+    if recipe_index < 0 or recipe_index >= len(restaurant_links):
+        await call.answer("Некорректный индекс рецепта.")
+        return
+
+    selected_recipe_link = restaurant_links[recipe_index]
+    selected_recipe_title = recipe_titles[recipe_index]
+    ingredients = fetch_ingredients_from_first_recipe([selected_recipe_link])
+
     if not ingredients:
-        await message.answer("Ингредиенты не найдены.")
+        await call.message.answer("Ингредиенты не найдены.")
         await state.finish()
         return
 
-    await message.answer("Ингредиенты:")
-    result_message = ""
-    for ingredient in ingredients:
+    await bot.send_message(call.message.chat.id, selected_recipe_title, reply_to_message_id=call.message.message_id)
+
+    await call.message.answer(
+        f"Ссылка на рецепт: [тык]({selected_recipe_link})",
+        parse_mode="Markdown",
+        disable_web_page_preview=True,
+    )
+
+    result_message = "🍴 **Ингредиенты для рецепта** 🍴\n\n"
+    for idx, ingredient in enumerate(ingredients, start=1):
         purchase_link = search_ingredient_online(ingredient)
         if purchase_link:
-            result_message += f"{ingredient} -> [ссылочка]({purchase_link})\n"
+            result_message += f"{idx}. **{ingredient}** 🛒 [Купить]({purchase_link})\n"
         else:
-            result_message += f"{ingredient} -> Не найдено\n"
+            result_message += f"{idx}. **{ingredient}** ❌ _Ссылка отсутствует_\n"
 
-    if result_message:
-        await message.answer(result_message, parse_mode="Markdown")
-    else:
-        await message.answer("Не удалось найти ссылки для ингредиентов.")
+    await call.message.answer(
+        result_message,
+        parse_mode="Markdown",
+        disable_web_page_preview=True,
+    )
 
-    await message.answer("Показать следующий рецепт?", reply_markup=next_recipe_keyboard)
+    # Отправка кнопки "Устраивает ли рецепт?"
+    try:
+        await call.message.answer("Устраивает ли рецепт?", reply_markup=next_recipe_keyboard)
+    except InvalidQueryID:
+        print("Попытка ответить на устаревший запрос.")
 
     await state.update_data(current_recipe_index=recipe_index)
+    await call.answer()
 
 
 @dp.callback_query_handler(lambda c: c.data in ["show_next_recipe", "end_recipe_view"], state=RestaurantStates.waiting_for_restaurant_name)
@@ -209,12 +276,14 @@ async def handle_next_recipe(call: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query_handler(text=["first_button"])
 async def check_button(call: types.CallbackQuery):
-    await send_message(call.message.chat.id, EATING_MESSAGE, reply_markup=keyboard_eating)
+    await call.message.answer("Введите блюдо:")
+    await RestaurantStates.waiting_for_restaurant_name.set()
     await call.answer()
 
 @dp.message_handler(commands=['kushat'])
 async def help_command(message: types.Message):
-    await send_message(message.chat.id, EATING_MESSAGE, reply_markup=keyboard_eating)
+    await message.answer("Введите блюдо:")
+    await RestaurantStates.waiting_for_restaurant_name.set()
 
 '''     старт      '''
 @dp.message_handler(commands=['start'])
