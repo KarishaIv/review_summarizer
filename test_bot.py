@@ -154,6 +154,7 @@ async def test_check_button_sets_state(callback_query):
         callback_query.message.answer.assert_called_once_with("Введите блюдо:")
         mock_set_state.assert_awaited_once()
 
+
 @pytest.mark.asyncio
 async def test_restaurant_name_handler_no_results(callback_query, fsm_context):
     """
