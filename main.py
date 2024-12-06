@@ -26,7 +26,7 @@ def fetch_reviews(dish):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    restaurant_links = []
+    recipes_links = []
     recipe_titles = []
     recipe_image_urls = []
 
@@ -34,7 +34,7 @@ def fetch_reviews(dish):
     for link in all_links:
         href = link.get('href')
         if href and "recipe" in href:
-            restaurant_links.append(f"https://www.gastronom.ru{href}")
+            recipes_links.append(f"https://www.gastronom.ru{href}")
 
         # Поиск названия блюда
         parent_div = link.find_next('a', class_="_name_iku8o_19")
@@ -54,18 +54,18 @@ def fetch_reviews(dish):
         else:
             recipe_image_urls.append(None)
 
-    print("Найденные ссылки на рецепты:", restaurant_links)
+    print("Найденные ссылки на рецепты:", recipes_links)
     print("Названия блюд:", recipe_titles)
     print("URL изображений:", recipe_image_urls)
 
-    return restaurant_links, recipe_titles, recipe_image_urls
+    return recipes_links, recipe_titles, recipe_image_urls
 
 
-def fetch_ingredients_from_first_recipe(restaurant_links):
-    if not restaurant_links:
+def fetch_ingredients_from_first_recipe(recipes_links):
+    if not recipes_links:
         return []
 
-    first_link = restaurant_links[0]
+    first_link = recipes_links[0]
     response = requests.get(first_link)
     soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -102,8 +102,8 @@ def search_ingredient_online(ingredient):
 
     return links[0] if links else None
 
-class RestaurantStates(StatesGroup):
-    waiting_for_restaurant_name = State()
+class RecipeStates(StatesGroup):
+    waiting_for_recipe_name = State()
 
 async def send_message(chat_id: int, text: str, reply_markup=None):
     await bot.send_message(chat_id, text, reply_markup=reply_markup)
@@ -125,37 +125,37 @@ keyboard_eating = InlineKeyboardMarkup().add(
 @dp.callback_query_handler(text="button_one")
 async def button_one_handler(call: types.CallbackQuery):
     await call.message.answer("Введите блюдо:")
-    await RestaurantStates.waiting_for_restaurant_name.set()
+    await RecipeStates.waiting_for_recipe_name.set()
     await call.answer()
 
-@dp.message_handler(state=RestaurantStates.waiting_for_restaurant_name, content_types=types.ContentType.TEXT)
-async def restaurant_name_handler(message: types.Message, state: FSMContext):
+@dp.message_handler(state=RecipeStates.waiting_for_recipe_name, content_types=types.ContentType.TEXT)
+async def recipe_name_handler(message: types.Message, state: FSMContext):
     if message.text == "в меню" or message.text == '/menu':
         await send_message_with_menu(message.chat.id, WELCOME_MESSAGE)
         await state.finish()  # Завершаем текущее состояние
         return
 
-    restaurant_name = message.text
+    recipe_name = message.text
 
     await message.answer("Ищу рецепты и ингредиенты, это может занять немного времени...🫦")
-    restaurant_links, recipe_titles, recipe_image_urls = fetch_reviews(restaurant_name)
+    recipe_links, recipe_titles, recipe_image_urls = fetch_reviews(recipe_name)
 
-    if not restaurant_links:
+    if not recipe_links:
         await message.answer("Рецепты не найдены.")
         await state.finish()
         return
 
-    await state.update_data(restaurant_links=restaurant_links, recipe_titles=recipe_titles, recipe_image_urls=recipe_image_urls)
+    await state.update_data(recipe_links=recipe_links, recipe_titles=recipe_titles, recipe_image_urls=recipe_image_urls)
 
     await show_recipe(message, state, recipe_index=0)
 
 async def show_recipe(message: types.Message, state: FSMContext, recipe_index: int):
     data = await state.get_data()
-    restaurant_links = data['restaurant_links']
+    recipe_links = data['recipe_links']
     recipe_titles = data['recipe_titles']
     recipe_image_urls = data['recipe_image_urls']
 
-    if recipe_index >= len(restaurant_links):
+    if recipe_index >= len(recipe_links):
         await message.answer("Больше рецептов нет.")
         await state.finish()
         return
@@ -183,13 +183,13 @@ next_recipe_keyboard = InlineKeyboardMarkup(row_width=2).add(
     InlineKeyboardButton("Нет", callback_data="show_next_recipe"),
 )
 
-@dp.callback_query_handler(lambda c: c.data == "recipe_accept", state=RestaurantStates.waiting_for_restaurant_name)
+@dp.callback_query_handler(lambda c: c.data == "recipe_accept", state=RecipeStates.waiting_for_recipe_name)
 async def handle_recipe_accept(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer("Приятного аппетита!")
     await state.finish()
     await call.answer()
 
-@dp.callback_query_handler(lambda c: c.data == "recipe_reject", state=RestaurantStates.waiting_for_restaurant_name)
+@dp.callback_query_handler(lambda c: c.data == "recipe_reject", state=RecipeStates.waiting_for_recipe_name)
 async def handle_recipe_reject(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     current_recipe_index = data.get("current_recipe_index", 0)
@@ -198,7 +198,7 @@ async def handle_recipe_reject(call: types.CallbackQuery, state: FSMContext):
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith("select_image_"),
-                           state=RestaurantStates.waiting_for_restaurant_name)
+                           state=RecipeStates.waiting_for_recipe_name)
 async def select_image_handler(call: types.CallbackQuery, state: FSMContext):
     parts = call.data.split("_")
     if len(parts) != 3:
@@ -212,14 +212,14 @@ async def select_image_handler(call: types.CallbackQuery, state: FSMContext):
         return
 
     data = await state.get_data()
-    restaurant_links = data.get('restaurant_links', [])
+    recipe_links = data.get('recipe_links', [])
     recipe_titles = data.get('recipe_titles', [])
 
-    if recipe_index < 0 or recipe_index >= len(restaurant_links):
+    if recipe_index < 0 or recipe_index >= len(recipe_links):
         await call.answer("Некорректный индекс рецепта.")
         return
 
-    selected_recipe_link = restaurant_links[recipe_index]
+    selected_recipe_link = recipe_links[recipe_index]
     selected_recipe_title = recipe_titles[recipe_index]
     ingredients = fetch_ingredients_from_first_recipe([selected_recipe_link])
 
@@ -260,7 +260,7 @@ async def select_image_handler(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@dp.callback_query_handler(lambda c: c.data in ["show_next_recipe", "end_recipe_view"], state=RestaurantStates.waiting_for_restaurant_name)
+@dp.callback_query_handler(lambda c: c.data in ["show_next_recipe", "end_recipe_view"], state=RecipeStates.waiting_for_recipe_name)
 async def handle_next_recipe(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     current_recipe_index = data.get("current_recipe_index", 0)
@@ -277,13 +277,13 @@ async def handle_next_recipe(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text=["first_button"])
 async def check_button(call: types.CallbackQuery):
     await call.message.answer("Введите блюдо:")
-    await RestaurantStates.waiting_for_restaurant_name.set()
+    await RecipeStates.waiting_for_recipe_name.set()
     await call.answer()
 
 @dp.message_handler(commands=['kushat'])
 async def help_command(message: types.Message):
     await message.answer("Введите блюдо:")
-    await RestaurantStates.waiting_for_restaurant_name.set()
+    await RecipeStates.waiting_for_recipe_name.set()
 
 '''     старт      '''
 @dp.message_handler(commands=['start'])
