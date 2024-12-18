@@ -8,10 +8,17 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from messages import WELCOME_MESSAGE, STICKERS
-import requests
 from urllib.parse import urlparse, parse_qs
-from bs4 import BeautifulSoup
 import random
+import urllib
+import urllib.request
+import requests
+import urllib.request
+from http.cookiejar import CookieJar
+from bs4 import BeautifulSoup
+from urllib.parse import quote
+
+
 
 load_dotenv()
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -21,44 +28,61 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 
+
 def fetch_reviews(dish):
-    url = f"https://www.gastronom.ru/search?search={dish}&pageType=recipepage"
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+    url = f"https://www.gastronom.ru/search?search={quote(dish)}&pageType=recipepage"
 
-    recipes_links = []
-    recipe_titles = []
-    recipe_image_urls = []
+    try:
+        # Создание запроса с куки
+        req = urllib.request.Request(url, None)
+        cj = CookieJar()
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+        response = opener.open(req)
 
-    all_links = soup.find_all('a', class_="_link_iku8o_14", itemprop="url")
-    for link in all_links:
-        href = link.get('href')
-        if href and "recipe" in href:
-            recipes_links.append(f"https://www.gastronom.ru{href}")
+        # Чтение и декодирование ответа
+        raw_response = response.read().decode('utf-8', errors='ignore')
+        response.close()
 
-        # Поиск названия блюда
-        parent_div = link.find_next('a', class_="_name_iku8o_19")
-        if parent_div:
-            title_tag = parent_div.find('span', itemprop="name")
-            if title_tag:
-                recipe_titles.append(title_tag.get_text(strip=True))
+        soup = BeautifulSoup(raw_response, 'html.parser')
+
+        recipes_links = []
+        recipe_titles = []
+        recipe_image_urls = []
+
+        all_links = soup.find_all('a', class_="_link_iku8o_14", itemprop="url")
+        for link in all_links:
+            href = link.get('href')
+            if href and "recipe" in href:
+                recipes_links.append(f"https://www.gastronom.ru{href}")
+
+            # Поиск названия блюда
+            parent_div = link.find_next('a', class_="_name_iku8o_19")
+            if parent_div:
+                title_tag = parent_div.find('span', itemprop="name")
+                if title_tag:
+                    recipe_titles.append(title_tag.get_text(strip=True))
+                else:
+                    recipe_titles.append("Без названия")
             else:
                 recipe_titles.append("Без названия")
-        else:
-            recipe_titles.append("Без названия")
 
-        # URL изображения
-        image_tag = link.find('img', itemprop="image")
-        if image_tag:
-            recipe_image_urls.append(image_tag.get('src'))
-        else:
-            recipe_image_urls.append(None)
+            # URL изображения
+            image_tag = link.find('img', itemprop="image")
+            if image_tag:
+                recipe_image_urls.append(image_tag.get('src'))
+            else:
+                recipe_image_urls.append(None)
 
-    print("Найденные ссылки на рецепты:", recipes_links)
-    print("Названия блюд:", recipe_titles)
-    print("URL изображений:", recipe_image_urls)
+        print("Найденные ссылки на рецепты:", recipes_links)
+        print("Названия блюд:", recipe_titles)
+        print("URL изображений:", recipe_image_urls)
 
-    return recipes_links, recipe_titles, recipe_image_urls
+        return recipes_links, recipe_titles, recipe_image_urls
+
+    except urllib.request.HTTPError as inst:
+        output = format(inst)
+        print(output)
+
 
 
 def fetch_ingredients_from_first_recipe(recipes_links):
