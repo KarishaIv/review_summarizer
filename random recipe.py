@@ -1,4 +1,6 @@
 YANDEX_API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+FOLDER_ID = os.environ.get('FOLDER_ID')
+YANDEX_IAM_TOKEN = os.environ.get('YANDEX_IAM_TOKEN')
 
 @dp.message_handler(commands=['random'])
 async def random_command(message: types.Message):
