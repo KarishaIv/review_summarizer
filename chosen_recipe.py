@@ -1,3 +1,26 @@
+import os
+import re
+import ssl
+import urllib
+
+import pymorphy2
+import requests
+from http.cookiejar import CookieJar
+from urllib.parse import urlparse, parse_qs, quote
+import urllib.request
+import certifi
+from bs4 import BeautifulSoup
+
+from dotenv import load_dotenv
+
+from aiogram import Bot, Dispatcher, types
+from aiogram.utils.exceptions import InvalidQueryID
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+
+from messages import WELCOME_MESSAGE
 load_dotenv()
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
@@ -363,7 +386,7 @@ async def select_image_handler(call: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query_handler(lambda call: call.data == "next_recipe_set", state=RecipeStates.waiting_for_recipe_name)
 async def handle_next_recipe_set(call: types.CallbackQuery, state: FSMContext):
-    # Получаем текущий индекс рецепта из состояния
+    # Получаем текущий индекс рецепта из
     data = await state.get_data()
     current_recipe_index = data.get("current_recipe_index", 0)
 
