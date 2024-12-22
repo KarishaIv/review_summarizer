@@ -1,7 +1,3 @@
-YANDEX_API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-FOLDER_ID='ID'
-YANDEX_IAM_TOKEN='TOKEN'
-  
 load_dotenv()
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
