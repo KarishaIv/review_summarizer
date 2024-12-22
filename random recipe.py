@@ -1,3 +1,5 @@
+YANDEX_API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+
 @dp.message_handler(commands=['random'])
 async def random_command(message: types.Message):
     # Создаём клавиатуру с кнопкой "Без разницы"
