@@ -31,3 +31,11 @@ import requests
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher import FSMContext
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch, ANY
+from aiogram import types
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message, Chat, User
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.utils.exceptions import InvalidQueryID
