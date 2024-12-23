@@ -1,6 +1,4 @@
-from aiogram.utils import executor
-from chosen_recipe import dp as dp_chosen
-from random_recipe import dp as dp_random
+from imports import *
 
 dp = dp_chosen
 

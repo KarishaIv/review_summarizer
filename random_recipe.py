@@ -1,16 +1,18 @@
-import os
+from imports import *
 import json
-import requests
-from aiogram import types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.dispatcher import FSMContext
+from chosen_recipe import  search_ingredient_online, dp
 
-from chosen_recipe import RandomRecipeState, search_ingredient_online, dp
 
-YANDEX_API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+YANDEX_API_URL = os.environ.get('YANDEX_API_URL')
 FOLDER_ID = os.environ.get('FOLDER_ID')
 YANDEX_IAM_TOKEN = os.environ.get('YANDEX_IAM_TOKEN')
 
+
+class RandomRecipeState(StatesGroup):
+    waiting_for_cuisine_type = State()
+    generating_recipe = State()
+
+# Обработка команды "/random"
 @dp.message_handler(commands=['random'])
 async def random_command(message: types.Message):
     # Создаём клавиатуру с кнопкой "Без разницы"
@@ -20,26 +22,7 @@ async def random_command(message: types.Message):
     # Сообщение с инструкцией
     await message.answer("Введите тип кухни (например, итальянская, японская) или выберите 'Без разницы':",
                          reply_markup=keyboard)
-    # Устанавливаем состояние
     await RandomRecipeState.waiting_for_cuisine_type.set()
-
-
-# Функция отправки запроса к Yandex LLM API
-def extract_event_details(request_text):
-    headers = {
-        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    payload = form_payload(request_text)
-    response = requests.post(YANDEX_API_URL, headers=headers, data=payload)
-
-    if response.status_code == 200:
-        result = response.json()
-        text = result['result']['alternatives'][0]['message']['text']
-        return text
-    else:
-        raise Exception(f"Ошибка при вызове Yandex LLM API: {response.status_code} {response.text}")
-
 
 # Обработка кнопки "Без разницы"
 @dp.callback_query_handler(lambda call: call.data == "random_any_cuisine", state=RandomRecipeState.waiting_for_cuisine_type)
@@ -56,6 +39,22 @@ async def random_cuisine_handler(message: types.Message, state: FSMContext):
     await state.update_data(flag=False, cuisine_type=cuisine_type)
     await message.answer("Ищу рецепты и ингредиенты, это может занять немного времени...🫦")
     await process_random_recipe(message, state)
+
+# Функция отправки запроса к Yandex LLM API
+def extract_event_details(request_text):
+    headers = {
+        "Authorization": f"Bearer {YANDEX_IAM_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = form_payload(request_text)
+    response = requests.post(YANDEX_API_URL, headers=headers, data=payload)
+
+    if response.status_code == 200:
+        result = response.json()
+        text = result['result']['alternatives'][0]['message']['text']
+        return text
+    else:
+        raise Exception(f"Ошибка при вызове Yandex LLM API: {response.status_code} {response.text}")
 
 
 # Функция формирования тела запроса к Yandex LLM API
@@ -172,7 +171,7 @@ async def process_random_recipe(message_or_call, state: FSMContext, is_callback=
         else:
             await message_or_call.answer(f"Ошибка при запросе: {e}")
 
-
+# Обработка отклонения рецепта (когда пользователь нажимает "Нет")
 @dp.callback_query_handler(lambda call: call.data == "reject_recipe", state=RandomRecipeState.generating_recipe)
 async def handle_reject_recipe(call: types.CallbackQuery, state: FSMContext):
     # Переход к обработке следующих рецептов
